@@ -1103,7 +1103,7 @@ code Kernel
               aPageTable.SetFrameAddr (i, frameAddr)
             endFor
           numberFreeFrames = (numberFreeFrames - numFramesNeeded)
-          aPageTable.numberOfPages = numFramesNeeded + aPageTable.numberOfPages
+          aPageTable.numberOfPages = numFramesNeeded
           frameManagerLock.Unlock ()
         endMethod
 
