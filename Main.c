@@ -6,12 +6,13 @@ code Main
 
   function main ()
 
+
 /*
-
       var th0, th1, th2: ptr to Thread
-          proc0, proc1, proc2, proc3: ptr to ProcessControlBlock
 
+          proc0, proc1, proc2, proc3: ptr to ProcessControlBlock
 */
+
 
       -- Initialization for testing code
       uniqueNumberLock.Init ()
@@ -105,8 +106,8 @@ code Main
       processManager.FreeProcess (proc2)
       frameManager.ReturnAllFrames(&proc3.addrSpace)
       processManager.FreeProcess (proc3)
-
 */
+
 
       -- Run more thorough tests.
       RunThreadManagerTests ()

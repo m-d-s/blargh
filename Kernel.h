@@ -192,8 +192,9 @@ header Kernel
     superclass Object
     fields
       threadManLock: Mutex
+--      inLine: int
       threadBecameFree: Condition
-      threadStatus: array [MAX_NUMBER_OF_PROCESSES] of int
+--      lineForThreads: Condition
       threadTable: array [MAX_NUMBER_OF_PROCESSES] of Thread
       freeList: List [Thread]
     methods
