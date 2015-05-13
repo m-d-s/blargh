@@ -1094,17 +1094,20 @@ code Kernel
 	  var
             i, frameAddr: int           
           frameManagerLock.Lock ()                         -- Lock the mutex prior to entering the monitor
+
           while numberFreeFrames < numFramesNeeded        
               newFramesAvailable.Wait(&frameManagerLock)   -- Wait for enough frames to be available to fulfill the request
             endWhile
-          for i = 0 to numFramesNeeded - 1
-              frameAddr = framesInUse.FindZeroAndSet ()
-              frameAddr = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (frameAddr * PAGE_SIZE)
-              aPageTable.SetFrameAddr (i, frameAddr)
+
+          for i = 0 to numFramesNeeded - 1                 -- Translate address for all requested frames
+              frameAddr = framesInUse.FindZeroAndSet ()    -- Set bits in bitmap to 1
+              frameAddr = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (frameAddr * PAGE_SIZE) -- Calculate logical address of frames
+              aPageTable.SetFrameAddr (i, frameAddr)                   -- Set logical address in page table
             endFor
-          numberFreeFrames = (numberFreeFrames - numFramesNeeded)
-          aPageTable.numberOfPages = numFramesNeeded
-          frameManagerLock.Unlock ()
+
+          numberFreeFrames = (numberFreeFrames - numFramesNeeded)      -- Update number of free frames
+          aPageTable.numberOfPages = numFramesNeeded                   -- Update number of pages in page table
+          frameManagerLock.Unlock ()                       -- Unlock the mutex prior to exiting the monitor
         endMethod
 
       ----------  FrameManager . ReturnAllFrames  ----------
@@ -1113,18 +1116,18 @@ code Kernel
 	  var
             i, frameAddr, bitNumber: int           
           frameManagerLock.Lock ()                         -- Lock the mutex prior to entering the monitor
-          for i = 0 to aPageTable.numberOfPages - 1
-              frameAddr = aPageTable.ExtractFrameAddr(i)
-              bitNumber = ((frameAddr - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE) 
-              framesInUse.ClearBit(bitNumber)
-            endFor
-          numberFreeFrames = (numberFreeFrames + aPageTable.numberOfPages)
-          newFramesAvailable.Broadcast(&frameManagerLock)
-          aPageTable.numberOfPages = 0
-          frameManagerLock.Unlock ()
-        
-        endMethod
 
+          for i = 0 to aPageTable.numberOfPages - 1       
+              frameAddr = aPageTable.ExtractFrameAddr(i)   -- Retrieve the logical frame address
+              bitNumber = ((frameAddr - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE)  -- Translate back into a physical address
+              framesInUse.ClearBit(bitNumber)              -- Reset bit to zero in bitmap
+            endFor
+
+          numberFreeFrames = (numberFreeFrames + aPageTable.numberOfPages)  -- Update number of free frames
+          newFramesAvailable.Broadcast(&frameManagerLock)  -- Signal all waiting threads that more frames are available
+          aPageTable.numberOfPages = 0                     -- Update number of pages in page table
+          frameManagerLock.Unlock ()                       -- Unlock the mutex prior to exiting the monitor        
+        endMethod
     endBehavior
 
 -----------------------------  AddrSpace  ---------------------------------
