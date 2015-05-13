@@ -341,7 +341,6 @@ code Kernel
          endMethod
 
   endBehavior
-
 -----------------------------  Condition  ---------------------------------
 
   behavior Condition
@@ -375,11 +374,13 @@ code Kernel
     --    Init()
     --         Each condition must be initialized.
 
+
       ----------  Condition . Init  ----------
 
       method Init ()
           waitingThreads = new List [Thread]
         endMethod
+
 
       ----------  Condition . Wait  ----------
 
@@ -435,6 +436,47 @@ code Kernel
           endWhile
           oldIntStat = SetInterruptsTo (oldIntStat)
         endMethod
+  endBehavior
+
+
+------------------------  HoareCondition  ---------------------------------
+behavior HoareCondition
+      ----------  HoareCondition . Init  ----------
+
+      method Init ()
+          cnt = 0
+          sem = new Semaphore
+          sem.Init(0)
+        endMethod
+
+      ----------  HoareCondition . Wait  ----------
+
+      method Wait (mutex: ptr to Mutex, nextCount: ptr to int, nextSem: ptr to Semaphore)
+         cnt = cnt + 1
+         if *nextCount > 0
+            nextSem.Up ()       
+         else
+            mutex.Unlock ()
+         endIf 
+         sem.Down ()
+         cnt = cnt -1
+        endMethod
+
+      ----------  HoareCondition . Signal  ----------
+
+      method Signal (nextCount: ptr to int, nextSem: ptr to Semaphore)
+          if cnt > 0
+              *nextCount = *nextCount + 1
+              sem.Up ()
+              nextSem.Down ()
+              *nextCount = *nextCount - 1
+          endIf  
+        endMethod
+
+      ----------  HoareCondition . Broadcast  ----------
+
+      method Broadcast (mutex: ptr to Mutex)
+          endMethod
 
   endBehavior
 
@@ -698,8 +740,13 @@ code Kernel
           threadManLock = new Mutex                                
           threadManLock.Init ()                                  -- Set up the mutex
           
-          threadBecameFree = new Condition
-          threadBecameFree.Init ()                               -- Set up the condition
+          threadBecameFree = new HoareCondition
+          threadBecameFree.Init ()                               -- Set up the HoareCondition
+
+          nextCt = 0                                             -- Init to zero to support Hoare Semantics
+
+          nextSem = new Semaphore                                -- Set up a semaphore to
+          nextSem.Init(0)                                        -- support Hoare semantics
 
           threadTable = new array of Thread {MAX_NUMBER_OF_PROCESSES of new Thread}          
           
@@ -760,14 +807,18 @@ code Kernel
           p = null
           threadManLock.Lock ()                      -- Lock must be aquired prior to monitor entry
 
-          while freeList.IsEmpty () == true
-              threadBecameFree.Wait (&threadManLock) -- While no threads available, wait
-          endWhile
+          if freeList.IsEmpty () == true
+              threadBecameFree.Wait (&threadManLock, &nextCt, &nextSem) -- While no threads available, wait
+          endIf
           
           p = freeList.Remove ()                     -- Get the next thread from the free list
           p.status = JUST_CREATED                    -- Change it's status
-  
-          threadManLock.Unlock ()                    -- Lock must be released prior to monitor exit  
+
+          if nextCt > 0                              -- If any threads waiting to enter the monitor
+              nextSem.Up ()                          -- Wake them up
+          else
+              threadManLock.Unlock ()                -- otw lock must be released prior to monitor exit  
+          endIf
           return p
         endMethod
 
@@ -781,8 +832,13 @@ code Kernel
           threadManLock.Lock ()                       -- Lock must be aquired prior to monitor entry
           th.status = UNUSED                          -- Change the threads status
           freeList.AddToEnd (th)                      -- Add thread back to free list
-          threadBecameFree.Signal (&threadManLock)    -- signal any process on the thread monitor wait list
-          threadManLock.Unlock ()                     -- Lock must be release prior to monitor exit
+          threadBecameFree.Signal (&nextCt, &nextSem)    -- signal any process on the thread monitor wait list
+          
+          if nextCt > 0                               -- If any threads waiting to enter the monitor
+              nextSem.Up ()                           -- Wake them up
+          else
+              threadManLock.Unlock ()                 -- otw lock must be released prior to monitor exit  
+          endIf   
         endMethod
 
     endBehavior
@@ -877,13 +933,17 @@ code Kernel
           processManagerLock = new Mutex
           processManagerLock.Init ()                             -- Init the monitors mutex
 
-          aProcessBecameFree = new Condition
+          aProcessBecameFree = new HoareCondition
           aProcessBecameFree.Init ()                             -- Init the process free signaling condition
  
           freeList = new List [ProcessControlBlock]              -- Allocate the free list
   
           aProcessDied = new Condition
           aProcessDied.Init ()                                   -- Init the process death signaling condition
+
+          nextCt = 0          
+          nextSem = new Semaphore
+          nextSem.Init(0)
 
           for i = 0 to MAX_NUMBER_OF_PROCESSES - 1
               processTable[i].Init ()
@@ -949,9 +1009,9 @@ code Kernel
             
           p = null
           processManagerLock.Lock ()                               -- Lock the mutex prior to entering the monitor
-          while freeList.IsEmpty () == true                        
-              aProcessBecameFree.Wait(&processManagerLock)         -- Wait for a PCB to become free
-            endWhile
+          if freeList.IsEmpty () == true                        
+              aProcessBecameFree.Wait(&processManagerLock, &nextCt, &nextSem)         -- Wait for a PCB to become free
+            endIf
           
           p = freeList.Remove ()                                   -- Retrieve the next PCB
           p.status = ACTIVE                                        -- Flip it's status to active
@@ -964,7 +1024,12 @@ code Kernel
               nextPid = 0                                          -- No more PCB's
             endIf
 
-          processManagerLock.Unlock()                              -- Unlock the mutex prior to exiting the monitor 
+          if nextCt > 0                                            -- If any threads waiting to enter the monitor
+              nextSem.Up ()                                        -- Wake them up
+          else
+              processManagerLock.Unlock ()                          -- otw lock must be released prior to monitor exit  
+          endIf   
+
           return p
         endMethod
 
@@ -981,9 +1046,13 @@ code Kernel
             endIf
           p.status = FREE                                          -- Switch p's status to free
           freeList.AddToEnd(p)                                     -- Add p to the end of the free list
-          aProcessBecameFree.Signal (&processManagerLock)          -- Signal the wait list 
-          processManagerLock.Unlock ()                             -- Unlock the mutex prior to exiting the monitor
+          aProcessBecameFree.Signal (&nextCt, &nextSem)            -- Signal the wait list 
 
+          if nextCt > 0                                            -- If any threads waiting to enter the monitor
+              nextSem.Up ()                                        -- Wake them up
+          else
+              processManagerLock.Unlock ()                          -- otw lock must be released prior to monitor exit  
+          endIf   
         endMethod
 
 

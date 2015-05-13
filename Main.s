@@ -116,6 +116,8 @@
 ! The following class and its methods are from other packages
 	.import	_P_Kernel_Condition
 ! The following class and its methods are from other packages
+	.import	_P_Kernel_HoareCondition
+! The following class and its methods are from other packages
 	.import	_P_Kernel_Thread
 ! The following class and its methods are from other packages
 	.import	_P_Kernel_ThreadManager
@@ -381,9 +383,9 @@ _Label_33:
 	.import	_CheckVersion_P_List_
 	cmp	r1,0
 	bne	_Label_34
-! Make sure _P_Kernel_ has hash value 0x0452285a (decimal 72493146)
+! Make sure _P_Kernel_ has hash value 0x6054fea2 (decimal 1616182946)
 	set	_packageName,r2
-	set	0x0452285a,r3
+	set	0x6054fea2,r3
 	call	_CheckVersion_P_Kernel_
 	.import	_CheckVersion_P_Kernel_
 	cmp	r1,0
@@ -437,9 +439,9 @@ _Label_480:
 	mov	24,r13		! source line 24
 	mov	"\0\0AS",r10
 !   NEW CLASS Constructor...
-!   ZeroMemory: _P_Kernel_processManager = zeros  (sizeInBytes=1316)
+!   ZeroMemory: _P_Kernel_processManager = zeros  (sizeInBytes=1352)
 	set	_P_Kernel_processManager,r4
-	mov	329,r3
+	mov	338,r3
 _Label_481:
 	store	r0,[r4]
 	add	r4,4,r4
@@ -467,9 +469,9 @@ _Label_481:
 	mov	28,r13		! source line 28
 	mov	"\0\0AS",r10
 !   NEW CLASS Constructor...
-!   ZeroMemory: _P_Kernel_threadManager = zeros  (sizeInBytes=41696)
+!   ZeroMemory: _P_Kernel_threadManager = zeros  (sizeInBytes=41732)
 	set	_P_Kernel_threadManager,r4
-	mov	10424,r3
+	mov	10433,r3
 _Label_482:
 	store	r0,[r4]
 	add	r4,4,r4

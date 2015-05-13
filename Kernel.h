@@ -159,6 +159,21 @@ header Kernel
       Broadcast (mutex: ptr to Mutex)
   endClass
 
+
+  ---------------  HoareCondition  ---------------
+
+  class HoareCondition
+    superclass Object
+    fields
+      cnt: int
+      sem: Semaphore
+    methods
+      Init ()
+      Wait (mutex: ptr to Mutex, nextCount: ptr to int, nextSem: ptr to Semaphore)
+      Signal (nextCount: ptr to int, nextSem: ptr to Semaphore)
+      Broadcast (mutex: ptr to Mutex)
+  endClass
+
   ---------------  Thread  ---------------
 
   class Thread
@@ -192,9 +207,9 @@ header Kernel
     superclass Object
     fields
       threadManLock: Mutex
---      inLine: int
-      threadBecameFree: Condition
---      lineForThreads: Condition
+      nextCt: int
+      nextSem: Semaphore
+      threadBecameFree: HoareCondition
       threadTable: array [MAX_NUMBER_OF_PROCESSES] of Thread
       freeList: List [Thread]
     methods
@@ -236,10 +251,12 @@ header Kernel
     fields
       processTable: array [MAX_NUMBER_OF_PROCESSES] of ProcessControlBlock
       processManagerLock: Mutex               -- These synchronization objects
-      aProcessBecameFree: Condition           --     apply to the "freeList"
+      aProcessBecameFree: HoareCondition      --     apply to the "freeList"
       freeList: List [ProcessControlBlock]
       aProcessDied: Condition                 -- Signalled for new ZOMBIEs
       nextPid: int
+      nextCt: int
+      nextSem: Semaphore
     methods
       Init ()
       Print ()
