@@ -444,32 +444,32 @@ behavior HoareCondition
       ----------  HoareCondition . Init  ----------
 
       method Init ()
-          cnt = 0
-          sem = new Semaphore
+          cnt = 0                                    -- No threads waiting on condition intially
+          sem = new Semaphore                        -- init count and semaphore to zero
           sem.Init(0)
         endMethod
 
       ----------  HoareCondition . Wait  ----------
 
       method Wait (mutex: ptr to Mutex, nextCount: ptr to int, nextSem: ptr to Semaphore)
-         cnt = cnt + 1
-         if *nextCount > 0
-            nextSem.Up ()       
+         cnt = cnt + 1                               -- indicate that a thread is waiting
+         if *nextCount > 0                           -- check if high priority threads are waiting
+            nextSem.Up ()                            -- signal high priority thread
          else
-            mutex.Unlock ()
+            mutex.Unlock ()                          -- release the mutex
          endIf 
-         sem.Down ()
-         cnt = cnt -1
+         sem.Down ()                                 -- Wait on the condition semaphore
+         cnt = cnt -1                                -- indicate thread is no longer waiting
         endMethod
 
       ----------  HoareCondition . Signal  ----------
 
       method Signal (nextCount: ptr to int, nextSem: ptr to Semaphore)
-          if cnt > 0
-              *nextCount = *nextCount + 1
-              sem.Up ()
-              nextSem.Down ()
-              *nextCount = *nextCount - 1
+          if cnt > 0                                 -- if there is a thread waiting
+              *nextCount = *nextCount + 1            -- indicate that you are releasing control
+              sem.Up ()                              -- signal the waiting thread
+              nextSem.Down ()                        -- put yourself to sleep
+              *nextCount = *nextCount - 1            -- indicate that you are no longer asleep
           endIf  
         endMethod
 
