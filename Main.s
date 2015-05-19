@@ -383,9 +383,9 @@ _Label_33:
 	.import	_CheckVersion_P_List_
 	cmp	r1,0
 	bne	_Label_34
-! Make sure _P_Kernel_ has hash value 0x6054fea2 (decimal 1616182946)
+! Make sure _P_Kernel_ has hash value 0x1cef1a39 (decimal 485431865)
 	set	_packageName,r2
-	set	0x6054fea2,r3
+	set	0x1cef1a39,r3
 	call	_CheckVersion_P_Kernel_
 	.import	_CheckVersion_P_Kernel_
 	cmp	r1,0
@@ -499,9 +499,9 @@ _Label_482:
 	mov	32,r13		! source line 32
 	mov	"\0\0AS",r10
 !   NEW CLASS Constructor...
-!   ZeroMemory: _P_Kernel_frameManager = zeros  (sizeInBytes=56)
+!   ZeroMemory: _P_Kernel_frameManager = zeros  (sizeInBytes=76)
 	set	_P_Kernel_frameManager,r4
-	mov	14,r3
+	mov	19,r3
 _Label_483:
 	store	r0,[r4]
 	add	r4,4,r4

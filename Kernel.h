@@ -165,13 +165,12 @@ header Kernel
   class HoareCondition
     superclass Object
     fields
-      cnt: int
+      count: int
       sem: Semaphore
     methods
       Init ()
-      Wait (mutex: ptr to Mutex, nextCount: ptr to int, nextSem: ptr to Semaphore)
-      Signal (nextCount: ptr to int, nextSem: ptr to Semaphore)
-      Broadcast (mutex: ptr to Mutex)
+      Wait (mutex: ptr to Mutex, monitorCount: ptr to int, monitorSem: ptr to Semaphore)
+      Signal (monitorCount: ptr to int, monitorSem: ptr to Semaphore)
   endClass
 
   ---------------  Thread  ---------------
@@ -277,6 +276,8 @@ header Kernel
       framesInUse: BitMap
       numberFreeFrames: int
       frameManagerLock: Mutex
+      waiting: int
+      restOfLine: Condition
       newFramesAvailable: Condition
     methods
       Init ()

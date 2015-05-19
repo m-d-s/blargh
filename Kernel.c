@@ -440,43 +440,43 @@ code Kernel
 
 
 ------------------------  HoareCondition  ---------------------------------
+
+-- This solution to implementing Hoare semaintics was adapted using a guide provided to me
+-- in the course materials for this class written by Harry Porter. None of this code has
+-- been copied from any source.
+
 behavior HoareCondition
       ----------  HoareCondition . Init  ----------
 
       method Init ()
-          cnt = 0                                    -- No threads waiting on condition intially
-          sem = new Semaphore                        -- init count and semaphore to zero
+          count = 0                         -- No threads waiting on condition intially
+          sem = new Semaphore               -- so init count and semaphore to zero
           sem.Init(0)
         endMethod
 
       ----------  HoareCondition . Wait  ----------
 
-      method Wait (mutex: ptr to Mutex, nextCount: ptr to int, nextSem: ptr to Semaphore)
-         cnt = cnt + 1                               -- indicate that a thread is waiting
-         if *nextCount > 0                           -- check if high priority threads are waiting
-            nextSem.Up ()                            -- signal high priority thread
+      method Wait (mutex: ptr to Mutex, monitorCount: ptr to int, monitorSem: ptr to Semaphore)
+         count = count + 1                     -- indicate that a thread is waiting
+         if *monitorCount > 0                  -- check if high priority threads are waiting
+            monitorSem.Up ()                   -- signal high priority thread
          else
-            mutex.Unlock ()                          -- release the mutex
+            mutex.Unlock ()                    -- release the mutex or else you will go to sleep holding it resulting in deadlock
          endIf 
-         sem.Down ()                                 -- Wait on the condition semaphore
-         cnt = cnt -1                                -- indicate thread is no longer waiting
+         sem.Down ()                           -- Wait on the condition semaphore
+         count = count -1                      -- indicate thread is no longer waiting
         endMethod
 
       ----------  HoareCondition . Signal  ----------
 
-      method Signal (nextCount: ptr to int, nextSem: ptr to Semaphore)
-          if cnt > 0                                 -- if there is a thread waiting
-              *nextCount = *nextCount + 1            -- indicate that you are releasing control
-              sem.Up ()                              -- signal the waiting thread
-              nextSem.Down ()                        -- put yourself to sleep
-              *nextCount = *nextCount - 1            -- indicate that you are no longer asleep
+      method Signal (monitorCount: ptr to int, monitorSem: ptr to Semaphore)
+          if count > 0                            -- if there is a thread waiting
+              *monitorCount = *monitorCount + 1      -- indicate that you are releasing control
+              sem.Up ()                          -- signal the waiting thread
+              monitorSem.Down ()                     -- put yourself to sleep
+              *monitorCount = *monitorCount - 1      -- indicate that you are no longer asleep
           endIf  
         endMethod
-
-      ----------  HoareCondition . Broadcast  ----------
-
-      method Broadcast (mutex: ptr to Mutex)
-          endMethod
 
   endBehavior
 
@@ -1010,7 +1010,7 @@ behavior HoareCondition
           p = null
           processManagerLock.Lock ()                               -- Lock the mutex prior to entering the monitor
           if freeList.IsEmpty () == true                        
-              aProcessBecameFree.Wait(&processManagerLock, &nextCt, &nextSem)         -- Wait for a PCB to become free
+              aProcessBecameFree.Wait(&processManagerLock, &nextCt, &nextSem)   -- Wait for a PCB to become free
             endIf
           
           p = freeList.Remove ()                                   -- Retrieve the next PCB
@@ -1019,7 +1019,7 @@ behavior HoareCondition
           if(freeList.IsEmpty() == false) 
               t = freeList.Remove ()                               -- Get the next PCB in the list
               nextPid = t.pid                                      -- Update the value of nextPid
-              freeList.AddToFront(t)                               -- Put the PCB bact to the front of the free list
+              freeList.AddToFront(t)                               -- Put the PCB back to the front of the free list
           else
               nextPid = 0                                          -- No more PCB's
             endIf
@@ -1027,7 +1027,7 @@ behavior HoareCondition
           if nextCt > 0                                            -- If any threads waiting to enter the monitor
               nextSem.Up ()                                        -- Wake them up
           else
-              processManagerLock.Unlock ()                          -- otw lock must be released prior to monitor exit  
+              processManagerLock.Unlock ()                         -- otw lock must be released prior to monitor exit  
           endIf   
 
           return p
@@ -1097,6 +1097,9 @@ behavior HoareCondition
           numberFreeFrames = NUMBER_OF_PHYSICAL_PAGE_FRAMES
           frameManagerLock = new Mutex
           frameManagerLock.Init ()
+          waiting = 0
+          restOfLine = new Condition
+          restOfLine.Init ()
           newFramesAvailable = new Condition
           newFramesAvailable.Init ()
           -- Check that the area to be used for paging contains zeros.
@@ -1163,16 +1166,27 @@ behavior HoareCondition
 	  var
             i, frameAddr: int           
           frameManagerLock.Lock ()                         -- Lock the mutex prior to entering the monitor
+
+          waiting = waiting + 1                            -- Add one to the waiting counter
+          if waiting > 1
+              restOfLine.Wait(&frameManagerLock)           -- Secondary condition to reduce the chance of starvation
+          endIf
+
           while numberFreeFrames < numFramesNeeded        
               newFramesAvailable.Wait(&frameManagerLock)   -- Wait for enough frames to be available to fulfill the request
             endWhile
+
           for i = 0 to numFramesNeeded - 1
-              frameAddr = framesInUse.FindZeroAndSet ()
-              frameAddr = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (frameAddr * PAGE_SIZE)
-              aPageTable.SetFrameAddr (i, frameAddr)
+              frameAddr = framesInUse.FindZeroAndSet ()    -- Indicate pages are being used in bitmap
+              frameAddr = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (frameAddr * PAGE_SIZE) --translate logical addr to physical
+              aPageTable.SetFrameAddr (i, frameAddr)       -- Set physical addr in page table
             endFor
-          numberFreeFrames = (numberFreeFrames - numFramesNeeded)
-          aPageTable.numberOfPages = numFramesNeeded
+
+          numberFreeFrames = (numberFreeFrames - numFramesNeeded) -- reduce free frames by the amount you took
+          aPageTable.numberOfPages = numFramesNeeded       -- Update page table to show how many pages you control
+          waiting = waiting - 1                            -- Update the waiting counter to indicate you recieved your frames
+          restOfLine.Signal (&frameManagerLock)            -- Signal to the next thread waiting in the secondary condition   
+
           frameManagerLock.Unlock ()
         endMethod
 
@@ -1182,16 +1196,18 @@ behavior HoareCondition
 	  var
             i, frameAddr, bitNumber: int           
           frameManagerLock.Lock ()                         -- Lock the mutex prior to entering the monitor
+
           for i = 0 to aPageTable.numberOfPages - 1
-              frameAddr = aPageTable.ExtractFrameAddr(i)
-              bitNumber = ((frameAddr - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE) 
-              framesInUse.ClearBit(bitNumber)
+              frameAddr = aPageTable.ExtractFrameAddr(i)   -- retrieve frame address from page table
+              bitNumber = ((frameAddr - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE) -- translate to logical address
+              framesInUse.ClearBit(bitNumber)              -- unset bits in bitmap
             endFor
-          numberFreeFrames = (numberFreeFrames + aPageTable.numberOfPages)
-          newFramesAvailable.Broadcast(&frameManagerLock)
-          aPageTable.numberOfPages = 0
-          frameManagerLock.Unlock ()
-        
+
+          numberFreeFrames = (numberFreeFrames + aPageTable.numberOfPages)  -- return frames to pool
+          newFramesAvailable.Signal(&frameManagerLock)     -- signal the polling thread that more frames are available
+          aPageTable.numberOfPages = 0                     -- reset number of pages in table
+
+          frameManagerLock.Unlock ()        
         endMethod
 
     endBehavior
