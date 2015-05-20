@@ -449,16 +449,19 @@ behavior HoareMutex
 
        -----------  HoareMutex . Lock  -----------
 
-       method Lock ()
+       method Lock (transfer: ptr to Thread)
            var
              oldIntStat: int
-           if heldBy == currentThread
-             FatalError ("Attempt to lock a mutex by a thread already holding it")
-           endIf
+           --if heldBy == currentThread
+            -- FatalError ("Attempt to lock a mutex by a thread already holding it")
+           --endIf
            oldIntStat = SetInterruptsTo (DISABLED)
            if !heldBy
              heldBy = currentThread
            else
+             if heldBy == currentThread
+                 heldBy = transfer
+               endIf
              waitingThreads.AddToEnd (currentThread)
              currentThread.Sleep ()
            endIf
@@ -502,6 +505,9 @@ behavior HoareMutex
            return heldBy == currentThread
          endMethod
 
+       method printHeldBy ()
+             print(heldBy.name)
+         endMethod
   endBehavior
 
 -----------------HoareCondition--------------------------------
@@ -542,9 +548,10 @@ behavior HoareCondition
           if t
             t.status = READY
             readyList.AddToFront (t)
-            hMutex.Transfer (t)
-            currentThread.Yield ()
-            hMutex.Transfer (currentThread)
+            hMutex.Lock (t)
+            --hMutex.Transfer (t)
+            --currentThread.Yield ()
+            --hMutex.Transfer (currentThread)
           endIf
           oldIntStat = SetInterruptsTo (oldIntStat)
         endMethod
@@ -870,7 +877,7 @@ behavior HoareCondition
             p: ptr to Thread
 
           p = null
-          threadManLock.Lock ()                      -- Lock must be aquired prior to monitor entry
+          threadManLock.Lock (currentThread)                      -- Lock must be aquired prior to monitor entry
 
           if freeList.IsEmpty () == true
               threadBecameFree.Wait (&threadManLock) -- While no threads available, wait
@@ -890,7 +897,7 @@ behavior HoareCondition
         -- This method is passed a ptr to a Thread;  It moves it
         -- to the FREE list.
         -- 
-          threadManLock.Lock ()                       -- Lock must be aquired prior to monitor entry
+          threadManLock.Lock (currentThread)                       -- Lock must be aquired prior to monitor entry
           th.status = UNUSED                          -- Change the threads status
           freeList.AddToEnd (th)                      -- Add thread back to free list
           threadBecameFree.Signal (&threadManLock)    -- signal any process on the thread monitor wait list
@@ -986,10 +993,10 @@ behavior HoareCondition
             i: int
           processTable = new array of ProcessControlBlock {MAX_NUMBER_OF_PROCESSES of new ProcessControlBlock}
 
-          processManagerLock = new HoareMutex
+          processManagerLock = new Mutex
           processManagerLock.Init ()                             -- Init the monitors mutex
 
-          aProcessBecameFree = new HoareCondition
+          aProcessBecameFree = new Condition
           aProcessBecameFree.Init ()                             -- Init the process free signaling condition
  
           freeList = new List [ProcessControlBlock]              -- Allocate the free list
@@ -1061,9 +1068,9 @@ behavior HoareCondition
             
           p = null
           processManagerLock.Lock ()                               -- Lock the mutex prior to entering the monitor
-          if freeList.IsEmpty () == true                        
+          while freeList.IsEmpty () == true                        
               aProcessBecameFree.Wait(&processManagerLock)   -- Wait for a PCB to become free
-            endIf
+            endWhile
           
           p = freeList.Remove ()                                   -- Retrieve the next PCB
           p.status = ACTIVE                                        -- Flip it's status to active

@@ -155,10 +155,11 @@ header Kernel
       waitingThreads: List [Thread]
     methods
       Init ()
-      Lock ()
+      Lock (transfer: ptr to Thread)
       Unlock ()
       Transfer (dest: ptr to Thread)
       IsHeldByCurrentThread () returns bool
+      printHeldBy()
   endClass
 
 
@@ -262,8 +263,8 @@ header Kernel
     superclass Object
     fields
       processTable: array [MAX_NUMBER_OF_PROCESSES] of ProcessControlBlock
-      processManagerLock: HoareMutex               -- These synchronization objects
-      aProcessBecameFree: HoareCondition      --     apply to the "freeList"
+      processManagerLock: Mutex               -- These synchronization objects
+      aProcessBecameFree: Condition           --     apply to the "freeList"
       freeList: List [ProcessControlBlock]
       aProcessDied: Condition                 -- Signalled for new ZOMBIEs
       nextPid: int
