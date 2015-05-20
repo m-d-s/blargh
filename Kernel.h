@@ -146,6 +146,22 @@ header Kernel
       IsHeldByCurrentThread () returns bool
   endClass
 
+  --------------- HoareMutex  ---------------
+
+  class HoareMutex
+    superclass Object
+    fields
+      heldBy: ptr to Thread           -- Null means this mutex is unlocked.
+      waitingThreads: List [Thread]
+    methods
+      Init ()
+      Lock ()
+      Unlock ()
+      Transfer (dest: ptr to Thread)
+      IsHeldByCurrentThread () returns bool
+  endClass
+
+
   ---------------  Condition  ---------------
 
   class Condition
@@ -165,12 +181,11 @@ header Kernel
   class HoareCondition
     superclass Object
     fields
-      count: int
-      sem: Semaphore
+      waitingThreads: List [Thread]
     methods
       Init ()
-      Wait (mutex: ptr to Mutex, monitorCount: ptr to int, monitorSem: ptr to Semaphore)
-      Signal (monitorCount: ptr to int, monitorSem: ptr to Semaphore)
+      Wait (hMutex: ptr to HoareMutex)
+      Signal (hMutex: ptr to HoareMutex)
   endClass
 
   ---------------  Thread  ---------------
@@ -205,9 +220,7 @@ header Kernel
   class ThreadManager
     superclass Object
     fields
-      threadManLock: Mutex
-      nextCt: int
-      nextSem: Semaphore
+      threadManLock: HoareMutex
       threadBecameFree: HoareCondition
       threadTable: array [MAX_NUMBER_OF_PROCESSES] of Thread
       freeList: List [Thread]
@@ -249,13 +262,11 @@ header Kernel
     superclass Object
     fields
       processTable: array [MAX_NUMBER_OF_PROCESSES] of ProcessControlBlock
-      processManagerLock: Mutex               -- These synchronization objects
+      processManagerLock: HoareMutex               -- These synchronization objects
       aProcessBecameFree: HoareCondition      --     apply to the "freeList"
       freeList: List [ProcessControlBlock]
       aProcessDied: Condition                 -- Signalled for new ZOMBIEs
       nextPid: int
-      nextCt: int
-      nextSem: Semaphore
     methods
       Init ()
       Print ()
