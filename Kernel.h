@@ -157,7 +157,6 @@ header Kernel
       Init ()
       Lock (transfer: ptr to Thread)
       Unlock ()
-      Transfer (dest: ptr to Thread)
       IsHeldByCurrentThread () returns bool
       printHeldBy()
   endClass
@@ -187,6 +186,7 @@ header Kernel
       Init ()
       Wait (hMutex: ptr to HoareMutex)
       Signal (hMutex: ptr to HoareMutex)
+      HoareTest(test: ptr to Thread, message: ptr to array [*] of char)
   endClass
 
   ---------------  Thread  ---------------

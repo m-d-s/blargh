@@ -489,16 +489,6 @@ behavior HoareMutex
            oldIntStat = SetInterruptsTo (oldIntStat)
          endMethod
 
-       ----------- HoareMutex . Transfer -----------
-
-       method Transfer (dest: ptr to Thread)
-           var
-             oldIntStat: int
-           oldIntStat = SetInterruptsTo (DISABLED)
-           heldBy = dest
-           oldIntStat = SetInterruptsTo (oldIntStat)
-         endMethod
-
        -----------  HoareMutex . IsHeldByCurrentThread  -----------
 
        method IsHeldByCurrentThread () returns bool
@@ -531,6 +521,7 @@ behavior HoareCondition
           hMutex.Unlock ()
           waitingThreads.AddToEnd (currentThread)
           currentThread.Sleep ()
+          
           oldIntStat = SetInterruptsTo (oldIntStat)
         endMethod
 
@@ -555,8 +546,33 @@ behavior HoareCondition
           endIf
           oldIntStat = SetInterruptsTo (oldIntStat)
         endMethod
-  endBehavior
 
+
+---------------------HoareTest---------------------------------
+-- This function should be placed before and after a signal call to a HoareCondition 
+-- and also after a wait call to a HoareCondition. If the same thread prints
+-- twice in a row on the output, Hoare semantics are not being preserved. There
+-- is a scenario where this may happen if a thread calls signal and there are no
+-- threads on the wait list, but this method accounts for that.
+
+method HoareTest( test: ptr to Thread, message: ptr to array [*] of char) 
+    var 
+      oldIntStat: int
+      if test != currentThread
+          FatalError( "HoareTest called by a thread other than current thread")
+        endIf
+      oldIntStat = SetInterruptsTo (DISABLED)
+      nl ()
+      print (message)
+      nl ()
+      if waitingThreads.IsEmpty () == true
+         print("\nNO WAITING THREADS\n")
+      else
+         ThreadPrintShort(test)
+        endIf
+      oldIntStat = SetInterruptsTo (oldIntStat)
+  endMethod 
+endBehavior
 -----------------------------  Thread  ---------------------------------
 
   behavior Thread
@@ -882,7 +898,7 @@ behavior HoareCondition
           if freeList.IsEmpty () == true
               threadBecameFree.Wait (&threadManLock) -- While no threads available, wait
           endIf
-          
+          threadBecameFree.HoareTest(currentThread, "after wait") 
           p = freeList.Remove ()                     -- Get the next thread from the free list
           p.status = JUST_CREATED                    -- Change it's status
 
@@ -900,7 +916,9 @@ behavior HoareCondition
           threadManLock.Lock (currentThread)                       -- Lock must be aquired prior to monitor entry
           th.status = UNUSED                          -- Change the threads status
           freeList.AddToEnd (th)                      -- Add thread back to free list
+          threadBecameFree.HoareTest(currentThread, "before signal")
           threadBecameFree.Signal (&threadManLock)    -- signal any process on the thread monitor wait list
+          threadBecameFree.HoareTest(currentThread, "after signal")
           threadManLock.Unlock ()                 -- otw lock must be released prior to monitor exit  
         endMethod
 
