@@ -1,0 +1,147 @@
+
+--------------------------------------------------------------------------------------------------
+-- This section shows a sample of the testing that I did for my implementation of Hoare semantics.
+-- There are some comments I included witht the output to describe what is happening at some key
+-- steps of execution.
+--------------------------------------------------------------------------------------------------
+
+Script started on May 20, 2015 11:49:07 AM PDT
+sh-3.2$ blitz os -g
+Beginning execution...
+====================  KPL PROGRAM STARTING  ====================
+Initializing Thread Scheduler...
+Initializing Thread Manager...
+Initializing Frame Manager...
+
+
+*****  THREAD-MANAGER TEST  *****
+
+1
+after wait
+
+NO WAITING THREADS
+2
+after wait
+
+
+.......................................removed for brevity...............................
+
+NO WAITING THREADS
+
+after wait
+
+NO WAITING THREADS
+815
+after wait
+
+NO WAITING THREADS                       -- There are no threads waiting, so Hoare semantics are
+                                         -- not being used at this point
+after wait
+
+NO WAITING THREADS
+2
+after wait
+
+NO WAITING THREADS
+39165.1718..
+before signal
+
+ -- Signaling thread #1 goes to sleep and put on mutex wait list
+
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x000252A4)
+
+after wait
+ 
+ -- Woken thread #1 begins running and eventually releases mutex
+ 
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x0002A40C) 
+19.
+before signal
+
+ -- This thread was already waiting in line for the mutex and makes a signal call which puts it to sleep and back on the mutex wait list
+
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x00027334) 
+
+after wait
+
+ -- Woken thread #2 begins running and eventually releases mutex
+
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x0001D064)
+20......
+before signal
+
+ -- Another thread that was already waiting in line for the mutex
+
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x000221CC)
+
+after wait
+
+ -- Woken thread  #3 begins running and eventually releases mutex
+
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x0001E0AC)
+
+after signal
+
+ -- Finally signaling thread #1 regains control of the mutex and continues with it's exeution eventually releasing the mutex
+
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x000252A4)
+
+before signal
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x000262EC)
+
+after wait
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x0002425C)
+.
+after signal
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x00027334)
+.10
+before signal
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x0001F0F4)
+
+after wait
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x0002B454)
+.
+before signal
+  Thread "TestThreadManager"    status=RUNNING    (addr of Thread object: 0x0001C01C)
+
+............................. removed for brevity .......................................
+
+NO WAITING THREADS
+18
+after wait
+
+NO WAITING THREADS
+
+before signal
+
+NO WAITING THREADS
+19^C
+
+............................ aborted for brevity .........................................
+
+*****  Control-C  *****
+Done!  The next instruction to execute will be:
+                   _Label_124:
+004870: 540F0000       push    r0,[--r15]
+
+Entering machine-level debugger...
+======================================================
+=====                                            =====
+=====         The BLITZ Machine Emulator         =====
+=====                                            =====
+=====  Copyright 2001-2007, Harry H. Porter III  =====
+=====                                            =====
+======================================================
+
+Enter a command at the prompt.  Type 'quit' to exit or 'help' for
+info about commands.
+> q
+Number of Disk Reads    = 0
+Number of Disk Writes   = 0
+Instructions Executed   = 1622799
+Time Spent Sleeping     = 0
+    Total Elapsed Time  = 1622799
+sh-3.2$ exit
+exit
+
+script done on May 20, 2015 11:49:58 AM PDT

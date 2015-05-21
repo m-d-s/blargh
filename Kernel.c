@@ -375,13 +375,11 @@ code Kernel
     --    Init()
     --         Each condition must be initialized.
 
-
       ----------  Condition . Init  ----------
 
       method Init ()
           waitingThreads = new List [Thread]
         endMethod
-
 
       ----------  Condition . Wait  ----------
 
@@ -439,6 +437,26 @@ code Kernel
         endMethod
   endBehavior
 ----------------------------- HoareMutex  ---------------------------------
+-- I implemented this class because I needed a way to transfer the mutex lock to the
+-- thread being signaled. I had initially written a very basic transfer method that
+-- would simply take a pointer to a thread and assign heldBy to the value of that
+-- pointer. I would then call transfer before and after yielding. Not only
+-- did my first attempt not work, but it did not seem wise to have a method whose
+-- only job was to switch the ownership of a lock. This pretty much seemed to defeat
+-- the purpose of having the lock in the first place to me. 
+-- I came up with the idea for this behavior while reviewing another failed attempt
+-- that I had made to generate Hoare semantics. I was initially using the method 
+-- outlined by Harry Porter that was included in the InstructorInfo directory of the
+-- course materials. There was a line that described that you would need to alter a 
+-- Mutex to not Error if a non owning lock attempted to unlock it. I thought that 
+-- rather than alter the unlock method, if instead I changed the lock method to 
+-- transfer control if lock was called by the same thread that already owned it
+-- I could preserve the functionality of the original lock while also exploiting the 
+-- transferal funtionality that I desired.
+-- The same line in Harry Porters outline was the reason I abandoned that implementation
+-- in the first place. I had not altered the mutex at all, and no errors were being
+-- thrown. This greatly reduced my confidence in my construction and encouraged me
+-- to try and explore another method.
 
 behavior HoareMutex
        -----------  HoareMutex . Init  -----------
@@ -448,28 +466,33 @@ behavior HoareMutex
          endMethod
 
        -----------  HoareMutex . Lock  -----------
-
+       -- Passing in a pointer to the current thread will either lock the lock
+       -- or simply put itself on the end of the waiting list and go to sleep.
+       -- Passing a pointer to a signaled thread will pass control of the lock
+       -- to that thread if the current thread is in possesion of the lock
        method Lock (transfer: ptr to Thread)
            var
              oldIntStat: int
+           -- Error check removed so that I could exploit the scenario where an owning 
+           -- thread called lock.
            --if heldBy == currentThread
             -- FatalError ("Attempt to lock a mutex by a thread already holding it")
            --endIf
-           oldIntStat = SetInterruptsTo (DISABLED)
-           if !heldBy
+           oldIntStat = SetInterruptsTo (DISABLED)           -- Disable interrupts
+           if !heldBy                                        -- Usual locking scheme
              heldBy = currentThread
            else
-             if heldBy == currentThread
-                 heldBy = transfer
-               endIf
-             waitingThreads.AddToEnd (currentThread)
-             currentThread.Sleep ()
+             if heldBy == currentThread                      -- If the caller of lock is already in 
+                 heldBy = transfer                           -- possesion of the lock, transfer
+               endIf                                         -- control to argument thread
+             waitingThreads.AddToEnd (currentThread)         -- current thread gets added to lock wait list
+             currentThread.Sleep ()                          -- current thread goes to sleep
            endIf
-           oldIntStat = SetInterruptsTo (oldIntStat)
+           oldIntStat = SetInterruptsTo (oldIntStat)         -- Reset interrupts to original value
          endMethod
 
        -----------  HoareMutex . Unlock  -----------
-
+       -- Unlock method is unchanged from original implementation
        method Unlock ()
            var
              oldIntStat: int
@@ -490,7 +513,7 @@ behavior HoareMutex
          endMethod
 
        -----------  HoareMutex . IsHeldByCurrentThread  -----------
-
+       -- IsHeldByCurrentThread is unchanged from original implementation
        method IsHeldByCurrentThread () returns bool
            return heldBy == currentThread
          endMethod
@@ -501,15 +524,36 @@ behavior HoareMutex
   endBehavior
 
 -----------------HoareCondition--------------------------------
-behavior HoareCondition
-      ----------  Condition . Init  ----------
+-- The Hoare condition variable that I implemented is the same as 
+-- the Mesa style condition except for a few key details. Instead
+-- of using a regular mutex, the HoareCondition entry methods get 
+-- passed the HoareMutex that I developed above in. The signal method still 
+-- functions much the same except for the fact that it adds the signaled thread
+-- to the front of the ready list rather than the end, and then it immediately
+-- makes a lock call passing in a pointer to the signaled thread. Since
+-- the lock is already held by the current thread, this will transfer 
+-- control of the lock to the signaled thread and then the call to sleep
+-- inside the lock method will put the current thread to sleep and immediately
+-- run the signaled thread. The current thread will then get to run again 
+-- after unlock has been called either by the signaled thread or another
+-- thread that was waiting in the lock's waiting list. The wait method
+-- no longer needs to perform a lock after the call to sleep because possesion
+-- of the lock will already have been tranfered to the current thread.  I also
+-- added a small testing method to prove to myself that Hoare semantics really 
+-- were being used.
 
+behavior HoareCondition
+      ----------  HoareCondition . Init  ----------
+      -- Init method unchanged from Mesa style condition 
       method Init ()
           waitingThreads = new List [Thread]
         endMethod
 
 
-      ----------  Condition . Wait  ----------
+      ----------  HoareCondition . Wait  ----------
+      -- Wait method changed from Mesa style by being passed a HoareMutex rather
+      -- than a standard Mutex. Also the thread will no longer need to lock
+      -- the mutex after returning from sleep since it will already posses the lock
 
       method Wait (hMutex: ptr to HoareMutex)
           var
@@ -518,10 +562,13 @@ behavior HoareCondition
             FatalError ("Attempt to wait on condition when mutex is not held")
           endIf
           oldIntStat = SetInterruptsTo (DISABLED)
+
           hMutex.Unlock ()
           waitingThreads.AddToEnd (currentThread)
-          currentThread.Sleep ()
-          
+          currentThread.Sleep ()       -- A call to lock would have normally
+                                       -- ocurred right after sleep, but does not
+                                       -- need to since the current thread will
+                                       -- alread possess the lock   
           oldIntStat = SetInterruptsTo (oldIntStat)
         endMethod
 
@@ -537,42 +584,43 @@ behavior HoareCondition
           oldIntStat = SetInterruptsTo (DISABLED)
           t = waitingThreads.Remove ()
           if t
-            t.status = READY
-            readyList.AddToFront (t)
-            hMutex.Lock (t)
-            --hMutex.Transfer (t)
-            --currentThread.Yield ()
-            --hMutex.Transfer (currentThread)
+            t.status = READY                -- Signaled thread status gets changed to ready.
+            readyList.AddToFront (t)        -- Signaled thread gets promoted to the front of the ready list.
+            hMutex.Lock (t)                 -- Call to HoareMutex passing in signaled thread while 
+                                            -- current thread already holds the lock will transfer control to
+                                            -- the signaled thread and put current thread to sleep.
           endIf
           oldIntStat = SetInterruptsTo (oldIntStat)
         endMethod
 
 
----------------------HoareTest---------------------------------
--- This function should be placed before and after a signal call to a HoareCondition 
--- and also after a wait call to a HoareCondition. If the same thread prints
--- twice in a row on the output, Hoare semantics are not being preserved. There
--- is a scenario where this may happen if a thread calls signal and there are no
--- threads on the wait list, but this method accounts for that.
+      ---------------------HoareTest---------------------------------
+      -- This function should be placed before and after a signal call to a HoareCondition 
+      -- and also after a wait call to a HoareCondition. If the same thread prints
+      -- twice in a row on the output, Hoare semantics are not being preserved. There
+      -- is a scenario where this may happen if a thread calls signal and there are no
+      -- threads on the wait list, but this method accounts for that.
 
-method HoareTest( test: ptr to Thread, message: ptr to array [*] of char) 
-    var 
-      oldIntStat: int
-      if test != currentThread
-          FatalError( "HoareTest called by a thread other than current thread")
-        endIf
-      oldIntStat = SetInterruptsTo (DISABLED)
-      nl ()
-      print (message)
-      nl ()
-      if waitingThreads.IsEmpty () == true
-         print("\nNO WAITING THREADS\n")
-      else
-         ThreadPrintShort(test)
-        endIf
-      oldIntStat = SetInterruptsTo (oldIntStat)
-  endMethod 
-endBehavior
+      method HoareTest( test: ptr to Thread, message: ptr to array [*] of char) 
+          var 
+            oldIntStat: int
+          if test != currentThread
+	      FatalError( "HoareTest called by a thread other than current thread")
+	    endIf
+          oldIntStat = SetInterruptsTo (DISABLED)
+          nl ()
+          print (message)                         -- Show the state in which this method was called
+          nl ()
+          if waitingThreads.IsEmpty () == true    -- If no threads are waiting, Hoare semantics will not get
+	      print("\nNO WAITING THREADS\n")     -- utilized so just output message
+          else
+	      ThreadPrintShort(test)              -- print info on the current thread.
+	    endIf
+          oldIntStat = SetInterruptsTo (oldIntStat)
+        endMethod 
+
+  endBehavior
+
 -----------------------------  Thread  ---------------------------------
 
   behavior Thread
@@ -815,6 +863,10 @@ endBehavior
     endFunction
 
 -----------------------------  ThreadManager  ---------------------------------
+-- The thread manager is a monitor that generates a thread pool and then manages distribution of 
+-- the threads to processes through the entry methods GetANewThread and FreeThread. The implementation
+-- of this monitor was pretty straight forward when following the guide outlined in the assignment
+-- specification. I also used this monitor as a test bed for my implementation of Hoare semantics.
 
   behavior ThreadManager
 
@@ -830,10 +882,10 @@ endBehavior
             
           print ("Initializing Thread Manager...\n")
           
-          threadManLock = new HoareMutex                                
+          threadManLock = new HoareMutex                         -- Using Hoare Mutex to test Hoare semantics 
           threadManLock.Init ()                                  -- Set up the mutex
           
-          threadBecameFree = new HoareCondition
+          threadBecameFree = new HoareCondition                  -- Using Hoare Conditional to test Hoare semantics
           threadBecameFree.Init ()                               -- Set up the HoareCondition
 
           threadTable = new array of Thread {MAX_NUMBER_OF_PROCESSES of new Thread}          
@@ -893,17 +945,19 @@ endBehavior
             p: ptr to Thread
 
           p = null
-          threadManLock.Lock (currentThread)                      -- Lock must be aquired prior to monitor entry
+          threadManLock.Lock (currentThread)         -- Lock must be aquired prior to monitor entry
 
           if freeList.IsEmpty () == true
-              threadBecameFree.Wait (&threadManLock) -- While no threads available, wait
+              threadBecameFree.Wait (&threadManLock) -- If no threads available, wait
           endIf
-          threadBecameFree.HoareTest(currentThread, "after wait") 
+
+          --threadBecameFree.HoareTest(currentThread, "after wait") -- Hoare semantics test
+
           p = freeList.Remove ()                     -- Get the next thread from the free list
           p.status = JUST_CREATED                    -- Change it's status
 
-          threadManLock.Unlock ()                    -- otw lock must be released prior to monitor exit  
-          return p
+          threadManLock.Unlock ()                    -- lock must be released prior to monitor exit  
+          return p                                   -- return the thread that was obtained
         endMethod
 
       ----------  ThreadManager . FreeThread  ----------
@@ -913,13 +967,16 @@ endBehavior
         -- This method is passed a ptr to a Thread;  It moves it
         -- to the FREE list.
         -- 
-          threadManLock.Lock (currentThread)                       -- Lock must be aquired prior to monitor entry
+          threadManLock.Lock (currentThread)          -- Lock must be aquired prior to monitor entry
+
           th.status = UNUSED                          -- Change the threads status
           freeList.AddToEnd (th)                      -- Add thread back to free list
-          threadBecameFree.HoareTest(currentThread, "before signal")
+
+          --threadBecameFree.HoareTest(currentThread, "before signal") -- Hoare semantics test
           threadBecameFree.Signal (&threadManLock)    -- signal any process on the thread monitor wait list
-          threadBecameFree.HoareTest(currentThread, "after signal")
-          threadManLock.Unlock ()                 -- otw lock must be released prior to monitor exit  
+          --threadBecameFree.HoareTest(currentThread, "after signal")  -- Hoare semantics test
+          
+          threadManLock.Unlock ()                     -- lock must be released prior to monitor exit  
         endMethod
 
     endBehavior
@@ -997,6 +1054,11 @@ endBehavior
     endBehavior
 
 -----------------------------  ProcessManager  ---------------------------------
+-- The process manager was very similar to the thread manager. I would say that the major distinction
+-- that I noticed between the two when I was implementing this was the nextPid field. Though I did
+-- not see anywhere currently utilizing this field, I felt that it was important to maintain its value
+-- throughout execution so that if it was ever needed, its value would be correct. This monitor is
+-- displaying Mesa style semantics rather than Hoare.
 
   behavior ProcessManager
 
@@ -1087,20 +1149,20 @@ endBehavior
           p = null
           processManagerLock.Lock ()                               -- Lock the mutex prior to entering the monitor
           while freeList.IsEmpty () == true                        
-              aProcessBecameFree.Wait(&processManagerLock)   -- Wait for a PCB to become free
+              aProcessBecameFree.Wait(&processManagerLock)         -- Wait for a PCB to become free
             endWhile
           
           p = freeList.Remove ()                                   -- Retrieve the next PCB
           p.status = ACTIVE                                        -- Flip it's status to active
 
           if(freeList.IsEmpty() == false) 
-              t = freeList.Remove ()                               -- Get the next PCB in the list
+              t = freeList.Remove ()                               -- Pop the next PCB off the list
               nextPid = t.pid                                      -- Update the value of nextPid
-              freeList.AddToFront(t)                               -- Put the PCB back to the front of the free list
+              freeList.AddToFront(t)                               -- Push the PCB back to the front of the free list
           else
-              nextPid = 0                                          -- No more PCB's
+              nextPid = 0                                          -- No more PCB's, set nextPid to zero
             endIf
-          processManagerLock.Unlock ()                         -- otw lock must be released prior to monitor exit  
+          processManagerLock.Unlock ()                             -- Lock must be released prior to monitor exit  
           return p
         endMethod
 
@@ -1117,8 +1179,8 @@ endBehavior
             endIf
           p.status = FREE                                          -- Switch p's status to free
           freeList.AddToEnd(p)                                     -- Add p to the end of the free list
-          aProcessBecameFree.Signal (&processManagerLock)            -- Signal the wait list 
-          processManagerLock.Unlock ()                          -- otw lock must be released prior to monitor exit  
+          aProcessBecameFree.Signal (&processManagerLock)          -- Signal the wait list 
+          processManagerLock.Unlock ()                             -- Lock must be released prior to monitor exit  
         endMethod
 
 
@@ -1146,6 +1208,15 @@ endBehavior
     endFunction
 
 -----------------------------  FrameManager  ---------------------------------
+-- The frame manager was somewhat more involved than the process and thread manager.
+-- The main difficulty that I faced was knowing how and when to translate address
+-- values to and from their logical and physical representations. It soon became apparent
+-- that you need to invert the calculations for translating to a physical address when
+-- you are translating to a logical address. The rest of the implementation was
+-- fairly straight forward.
+-- I also followed the advice given in the assignment specifiaction to utilize behavior 
+-- that was expressed in the gaming parlor solution to avoid having to broadcast and thus 
+-- reduce the risk of thread starvation. 
 
   behavior FrameManager
 
@@ -1235,16 +1306,16 @@ endBehavior
 
           waiting = waiting + 1                            -- Add one to the waiting counter
           if waiting > 1
-              restOfLine.Wait(&frameManagerLock)           -- Secondary condition to reduce the chance of starvation
+              restOfLine.Wait(&frameManagerLock)           -- Utilize this condition when another thread is waiting for frames
           endIf
 
           while numberFreeFrames < numFramesNeeded        
               newFramesAvailable.Wait(&frameManagerLock)   -- Wait for enough frames to be available to fulfill the request
             endWhile
 
-          for i = 0 to numFramesNeeded - 1
+          for i = 0 to numFramesNeeded - 1                 -- Repeat process to retrieve all frames required
               frameAddr = framesInUse.FindZeroAndSet ()    -- Indicate pages are being used in bitmap
-              frameAddr = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (frameAddr * PAGE_SIZE) --translate logical addr to physical
+              frameAddr = PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME + (frameAddr * PAGE_SIZE) --translate logical frame addr to physical address
               aPageTable.SetFrameAddr (i, frameAddr)       -- Set physical addr in page table
             endFor
 
@@ -1253,7 +1324,7 @@ endBehavior
           waiting = waiting - 1                            -- Update the waiting counter to indicate you recieved your frames
           restOfLine.Signal (&frameManagerLock)            -- Signal to the next thread waiting in the secondary condition   
 
-          frameManagerLock.Unlock ()
+          frameManagerLock.Unlock ()                       -- Unlock the mutex prior to exiting the monitor
         endMethod
 
       ----------  FrameManager . ReturnAllFrames  ----------
@@ -1263,9 +1334,9 @@ endBehavior
             i, frameAddr, bitNumber: int           
           frameManagerLock.Lock ()                         -- Lock the mutex prior to entering the monitor
 
-          for i = 0 to aPageTable.numberOfPages - 1
-              frameAddr = aPageTable.ExtractFrameAddr(i)   -- retrieve frame address from page table
-              bitNumber = ((frameAddr - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE) -- translate to logical address
+          for i = 0 to aPageTable.numberOfPages - 1        -- Loop through the entries in the page table
+              frameAddr = aPageTable.ExtractFrameAddr(i)   -- retrieve frame address from page table index
+              bitNumber = ((frameAddr - PHYSICAL_ADDRESS_OF_FIRST_PAGE_FRAME) / PAGE_SIZE) -- translate physical frame address to logical address
               framesInUse.ClearBit(bitNumber)              -- unset bits in bitmap
             endFor
 
@@ -1273,7 +1344,7 @@ endBehavior
           newFramesAvailable.Signal(&frameManagerLock)     -- signal the polling thread that more frames are available
           aPageTable.numberOfPages = 0                     -- reset number of pages in table
 
-          frameManagerLock.Unlock ()        
+          frameManagerLock.Unlock ()                       -- Unlock the mutex prior to exiting the monitor
         endMethod
 
     endBehavior
